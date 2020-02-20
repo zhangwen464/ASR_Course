@@ -1,24 +1,27 @@
 import librosa
 import numpy as np
 from scipy.fftpack import dct
+import pylab as plt
+import math
+import matplotlib as mplt
 
 # If you want to see the spectrogram picture
-# import matplotlib
-# matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
-# def plot_spectrogram(spec, note,file_name):
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+def plot_spectrogram(spec, note,file_name):
 #     """Draw the spectrogram picture
 #         :param spec: a feature_dim by num_frames array(real)
 #         :param note: title of the picture
 #         :param file_name: name of the file
 #     """ 
-#     fig = plt.figure(figsize=(20, 5))
-#     heatmap = plt.pcolor(spec)
-#     fig.colorbar(mappable=heatmap)
-#     plt.xlabel('Time(s)')
-#     plt.ylabel(note)
-#     plt.tight_layout()
-#     plt.savefig(file_name)
+     fig = plt.figure(figsize=(20, 5))
+     heatmap = plt.pcolor(spec)
+     fig.colorbar(mappable=heatmap)
+     plt.xlabel('Time(s)')
+     plt.ylabel(note)
+     plt.tight_layout()
+     plt.savefig(file_name)
 
 
 #preemphasis config 
@@ -72,6 +75,7 @@ def get_spectrum(frames, fft_len=fft_len):
     cFFT = np.fft.fft(frames, n=fft_len)
     valid_len = int(fft_len / 2 ) + 1
     spectrum = np.abs(cFFT[:,0:valid_len])
+    # num_frames * fft_len/2+1
     return spectrum
 
 def fbank(spectrum, num_filter = num_filter):
@@ -82,10 +86,52 @@ def fbank(spectrum, num_filter = num_filter):
         DON'T FORGET LOG OPRETION AFTER MEL FILTER!
     """
 
-    feats=np.zeros((int(fft_len/2+1), num_filter))
+    feats=np.zeros((int(fft_len/2+1), num_filter)) # 257* 23 
     """
         FINISH by YOURSELF
     """
+    #min_fs=300hz,max_fs=8Khz 2595
+    min_mel_fs = 2595 * math.log10(1+300/700)
+    max_mel_fs = 2595 * math.log10(1+8000/700)
+
+    w2 = int(fft_len/2+1)
+    df = fs/fft_len
+    freq = []
+    for i in range(0,w2):
+        freqs = int(i * df)
+        freq.append(freqs)
+
+    # num_filter = 23
+    #average the mel_fs
+    mel_fs_array = np.linspace(min_mel_fs, max_mel_fs, num_filter + 2)
+    # mel to hz
+    Hz_fs_array = 700.0 * ( 10**(mel_fs_array / 2595) - 1.0)
+    print (Hz_fs_array)
+    bin_array = np.floor(Hz_fs_array / df)
+    print (bin_array)
+
+    bank = np.zeros((num_filter, w2))
+    for k in range(1,num_filter+1):
+        f1 = bin_array[k-1]
+        f2 = bin_array[k+1]
+        f0 = bin_array[k]
+        for i in range (1, w2):
+            if i > f1 and i <= f0:
+                bank[k-1,i] = (i-f1)/(f0-f1)
+            elif i >f0 and i<=f2:
+                bank[k-1,i] = (f2-i)/(f2-f0)
+        #print (k)
+        #print(bank[k-1,:])
+        #plt.plot(freq,bank[k-1,:],'r')
+    #plt.show()
+
+    #feats(356,23)=mul((356,257)(257,23))
+    spectrum_power = np.power(spectrum,2) / fft_len
+    #feats = np.matmul(spectrum , np.transpose(bank))
+    feats_power = np.matmul(spectrum_power , np.transpose(bank))
+    feats = np.log(feats_power)
+    #feats = np.transpose(feats)
+    mplt.image.imsave('./out.png', feats)
     return feats
 
 def mfcc(fbank, num_mfcc = num_mfcc):
@@ -94,11 +140,11 @@ def mfcc(fbank, num_mfcc = num_mfcc):
         :param num_mfcc: mfcc number, default 12
         :returns: mfcc feature, a num_frames by num_mfcc array 
     """
-
     feats = np.zeros((fbank.shape[0],num_mfcc))
-    """
-        FINISH by YOURSELF
-    """
+    feats= dct(fbank, type=2, axis=1, norm='ortho')[:,:num_mfcc]
+    print("feat:",feats.shape)
+    #plt.plot(feats)
+    #plt.show()
     return feats
 
 def write_file(feats, file_name):
@@ -123,9 +169,9 @@ def main():
     spectrum = get_spectrum(frames)
     fbank_feats = fbank(spectrum)
     mfcc_feats = mfcc(fbank_feats)
-    # plot_spectrogram(fbank_feats, 'Filter Bank','fbank.png')
+    plot_spectrogram(fbank_feats, 'Filter Bank','fbank.png')
     write_file(fbank_feats,'./test.fbank')
-    # plot_spectrogram(mfcc_feats.T, 'MFCC','mfcc.png')
+    plot_spectrogram(mfcc_feats.T, 'MFCC','mfcc.png')
     write_file(mfcc_feats,'./test.mfcc')
 
 if __name__ == '__main__':
