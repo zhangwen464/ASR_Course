@@ -1,11 +1,12 @@
-# Author: Sining Sun , Zhanheng Yang
+# Author: Sining Sun , Zhanheng Yang,Wen Zhang
 
 import numpy as np
 from utils import *
 import scipy.cluster.vq as vq
+from scipy.stats import multivariate_normal
 
-num_gaussian = 5
-num_iterations = 5
+num_gaussian = 7
+num_iterations = 20
 targets = ['Z', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'O']
 
 class GMM:
@@ -19,9 +20,11 @@ class GMM:
     def kmeans_initial(self):
         mu = []
         sigma = []
-        data = read_all_data('train/feats.scp')
+        data = read_all_data('train/feats.scp')   
+        print ("the shape of data is:",data.shape) # is a 18593 * 39 array
+
         (centroids, labels) = vq.kmeans2(data, self.K, minit="points", iter=100)
-        clusters = [[] for i in range(self.K)]
+        clusters = [[] for i in range(self.K)] # clusters = [[], [], [], [], []]
         for (l,d) in zip(labels,data):
             clusters[l].append(d)
 
@@ -39,26 +42,41 @@ class GMM:
             :param sigma: The covariance matrix, dim*dim
             :return: the gaussion probability, scalor
         """
-        D=x.shape[0]
-        det_sigma = np.linalg.det(sigma)
-        inv_sigma = np.linalg.inv(sigma + 0.0001)
+        D=x.shape[0]     # D dimension Guassion distribution
+        det_sigma = np.linalg.det(sigma)      # a scaler is |sigma| 
+        inv_sigma = np.linalg.inv(sigma + 0.0001)     # a matrix is the inv of sigma
         mahalanobis = np.dot(np.transpose(x-mu), inv_sigma)
         mahalanobis = np.dot(mahalanobis, (x-mu))
         const = 1/((2*np.pi)**(D/2))
         return const * (det_sigma)**(-0.5) * np.exp(-0.5 * mahalanobis)
-    
+
+
     def calc_log_likelihood(self , X):
         """Calculate log likelihood of GMM
 
             param: X: A matrix including data samples, num_samples * D
             return: log likelihood of current model 
         """
-
         log_llh = 0.0
-        """
-            FINISH by YOUSELF
-        """
-        return log_llh
+
+        # firstly, we must update r(Znk)
+        n_observ, n_clusters = len(X), len(self.pi)
+        pdfs = np.zeros(((n_observ, n_clusters)))
+        for i in range(n_clusters):
+            pdfs[:, i] = self.pi[i] * multivariate_normal.pdf(X, self.mu[i], np.diag(self.sigma[i]))
+        r_Znk = pdfs / pdfs.sum(axis=1).reshape(-1,1)
+
+        # secondly, according to the r(Znk), we update the pi(k)
+        pi = r_Znk.sum(axis=0) / r_Znk.sum()
+
+        # thirdly, calculate the log likelihood of GMM
+        n_observ, n_clusters = len(X), len(pi)
+        pdfs = np.zeros(((n_observ, n_clusters)))
+        for i in range(n_clusters):
+            pdfs[:, i] = pi[i] * multivariate_normal.pdf(X, self.mu[i],np.diag(self.sigma[i]))
+        log_llh = np.mean(np.log(pdfs.sum(axis=1)))
+
+        return log_llh,r_Znk
 
     def em_estimator(self , X):
         """Update paramters of GMM
@@ -68,11 +86,21 @@ class GMM:
         """
 
         log_llh = 0.0
-        """
-            FINISH by YOUSELF
-        """
-        log_llh = self.calc_log_likelihood(X)
+        log_llh, r_Znk = self.calc_log_likelihood(X)
 
+        # firstly, udapte mu
+        D = X.shape[1]
+        n_clusters = len(self.pi)  #n_clusters = r_Znk.shape[1]
+        mu = np.zeros((n_clusters,D))
+        for i in range(n_clusters):
+            mu[i] = np.average(X, axis=0, weights = r_Znk[:, i])
+
+        #secondly, udapte sigma
+        n_clusters = len(self.pi)
+        sigma = np.zeros((n_clusters, D))
+        for i in range(n_clusters):
+            sigma[i] = np.average((X - mu[i]) ** 2, axis=0, weights = r_Znk[:, i])
+        
         return log_llh
 
 
