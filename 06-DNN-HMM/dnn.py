@@ -45,10 +45,16 @@ class Layer:
 class ReLU(Layer):
     def forward(self, input):
         # BEGIN_LAB
+        relu = lambda x: x * (x>0).astype(float)
+        out = relu(input)
+        return out
         # END_LAB
 
     def backward(self, input, output, d_output):
         # BEGIN_LAB
+        d_input = np.array(d_output, copy=True)
+        d_input[output <= 0] = 0
+        return d_input
         # END_LAB
 
 
@@ -61,12 +67,18 @@ class FullyConnect(Layer):
 
     def forward(self, input):
         # BEGIN_LAB
+        out = np.dot(input, self.w.T) + self.b
+        return out
         # END_LAB
 
     def backward(self, input, output, d_output):
         batch_size = input.shape[0]
         in_diff = None
         # BEGIN_LAB, compute in_diff/dw/db here
+        self.dw = np.dot(d_output.T, input)
+        self.db = np.sum(d_output, axis=0, keepdims=True)
+        in_diff = np.dot(d_output, self.w)
+        
         # END_LAB
         # Normalize dw/db by batch size
         self.dw = self.dw / batch_size
