@@ -1,37 +1,37 @@
-# Author: Sining Sun , Zhanheng Yang,Wen Zhang
+# Author: Sining Sun , Zhanheng Yang
 
 import numpy as np
 from utils import *
 import scipy.cluster.vq as vq
 from scipy.stats import multivariate_normal
 
-num_gaussian = 7
-num_iterations = 20
+num_gaussian = 5
+num_iterations = 5
 targets = ['Z', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'O']
 
 class GMM:
-    def __init__(self, D, K=5):
+    def __init__(self, X, D, K=5):
         assert(D>0)
         self.dim = D
         self.K = K
         #Kmeans Initial
-        self.mu , self.sigma , self.pi = self.kmeans_initial()
+        self.mu , self.sigma , self.pi = self.kmeans_initial(X)
 
-    def kmeans_initial(self):
+    def kmeans_initial(self, X):
         mu = []
         sigma = []
-        data = read_all_data('train/feats.scp')   
-        print ("the shape of data is:",data.shape) # is a 18593 * 39 array
+        #data = read_all_data('train/feats.scp')   
+        #print ("the shape of data is:",data.shape) # is a 18593 * 39 array
 
-        (centroids, labels) = vq.kmeans2(data, self.K, minit="points", iter=100)
+        (centroids, labels) = vq.kmeans2(X, self.K, minit="points", iter=100)
         clusters = [[] for i in range(self.K)] # clusters = [[], [], [], [], []]
-        for (l,d) in zip(labels,data):
+        for (l,d) in zip(labels,X):
             clusters[l].append(d)
 
         for cluster in clusters:
             mu.append(np.mean(cluster, axis=0))
             sigma.append(np.cov(cluster, rowvar=0))
-        pi = np.array([len(c)*1.0 / len(data) for c in clusters])
+        pi = np.array([len(c)*1.0 / len(X) for c in clusters])
         return mu , sigma , pi
     
     def gaussian(self , x , mu , sigma):
@@ -42,7 +42,7 @@ class GMM:
             :param sigma: The covariance matrix, dim*dim
             :return: the gaussion probability, scalor
         """
-        D=x.shape[0]     # D dimension Guassion distribution
+        #D=x.shape[0]     # D dimension Guassion distribution
         det_sigma = np.linalg.det(sigma)      # a scaler is |sigma| 
         inv_sigma = np.linalg.inv(sigma + 0.0001)     # a matrix is the inv of sigma
         mahalanobis = np.dot(np.transpose(x-mu), inv_sigma)
@@ -104,13 +104,10 @@ class GMM:
         return log_llh
 
 
-def train(gmms, num_iterations = num_iterations):
-    dict_utt2feat, dict_target2utt = read_feats_and_targets('train/feats.scp', 'train/text')
-    
-    for target in targets:
-        feats = get_feats(target, dict_utt2feat, dict_target2utt)   #
-        for i in range(num_iterations):
-            log_llh = gmms[target].em_estimator(feats)
+def train(gmms, feats, num_iterations = num_iterations):  
+    for i in range(num_iterations):
+        log_llh = gmms.em_estimator(feats)
+        print('Iteration {}: {}'.format(i, log_llh))
     return gmms
 
 def test(gmms):
@@ -139,9 +136,13 @@ def test(gmms):
 
 def main():
     gmms = {}
+    dict_utt2feat, dict_target2utt = read_feats_and_targets('train/feats.scp', 'train/text')
     for target in targets:
-        gmms[target] = GMM(39, K=num_gaussian) #Initial model
-    gmms = train(gmms)
+        print('Initialize and train for target {}'.format(target))
+        feats = get_feats(target, dict_utt2feat, dict_target2utt)
+        gmms[target] = GMM(feats, D=39, K=num_gaussian)
+        gmms[target] = train(gmms[target], feats)
+    
     acc = test(gmms)
     print('Recognition accuracy: %f' % acc)
     fid = open('acc.txt', 'w')
